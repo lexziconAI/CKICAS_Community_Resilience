@@ -1,0 +1,5 @@
+{
+  "name": "CKICAS Drought Monitor",
+  "description": "Real-time NZ drought monitoring dashboard with Gemini-powered analysis and parallel backend architecture.",
+  "requestFramePermissions": []
+}
