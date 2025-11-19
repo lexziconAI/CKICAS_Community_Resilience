@@ -93,7 +93,7 @@ const WeatherNarrative: React.FC = () => {
 
       <style>{`
         .animate-narrative-scroll {
-          animation: narrative-scroll 90s linear infinite;
+          animation: narrative-scroll 480s linear infinite;
         }
         @keyframes narrative-scroll {
           0% { transform: translateX(0); }

@@ -100,14 +100,9 @@ export const fetchForecastTrend = async (lat: number, lon: number): Promise<Hist
     const res = await safeFetch(`${API_BASE_URL}/api/public/forecast-trend?lat=${lat}&lon=${lon}`);
     return await res.json();
   } catch (e) {
-    // Mock return if backend fails to keep UI looking good
-    return Array.from({ length: 7 }, (_, i) => ({
-      date: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i],
-      risk_score: 40 + Math.random() * 20,
-      soil_moisture: 60 - Math.random() * 20,
-      temp: 15 + Math.random() * 5,
-      rain_probability: Math.random() * 100
-    }));
+    // No Mock Data - Return Empty Array to signal UI to show "No Data" state
+    console.error("Forecast fetch failed:", e);
+    return [];
   }
 };
 

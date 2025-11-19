@@ -1,3 +1,4 @@
+import 'leaflet/dist/leaflet.css';
 import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -16,7 +17,9 @@ import QuickStatsSkeleton from './components/QuickStatsSkeleton';
 import WeatherMetricsSkeleton from './components/WeatherMetricsSkeleton';
 import HistoricalChartSkeleton from './components/HistoricalChartSkeleton';
 import Triggers from './pages/Triggers';
+import SystemDynamics from './pages/SystemDynamics';
 import TRCMap from './components/TRCMap';
+import RainfallExplorer from './components/RainfallExplorer';
 import { checkApiHealth, fetchDataSources, fetchForecastTrend, fetchDroughtRisk, evaluateTriggers } from './services/api';
 import { DataSource, DroughtRiskData, HistoricalDataPoint } from './types';
 import { NZ_REGIONS } from './constants';
@@ -282,11 +285,11 @@ const Dashboard: React.FC = () => {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-blue-200 shadow-lg">
-              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-              </svg>
-            </div>
+            <img 
+              src="/CKICAS_LOGO.png" 
+              alt="CKICAS Logo" 
+              className="h-14 w-auto object-contain" 
+            />
             <h1 className="font-bold text-xl text-slate-900 tracking-tight">CKCIAS <span className="text-slate-500 font-normal">Drought Monitor</span></h1>
           </div>
           <div className="flex items-center gap-4 text-sm">
@@ -307,6 +310,20 @@ const Dashboard: React.FC = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
               </svg>
               TRC Sites
+            </Link>
+            <Link
+              to="/rainfall-explorer"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+            >
+              <span className="text-lg leading-none">🌧️</span>
+              Rainfall Sim
+            </Link>
+            <Link
+              to="/system-dynamics"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+            >
+              <span className="text-lg leading-none">🌀</span>
+              System Dynamics
             </Link>
             <button
               onClick={() => setShowShortcutsModal(true)}
@@ -470,7 +487,26 @@ const App: React.FC = () => {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/triggers" element={<Triggers />} />
+        <Route path="/system-dynamics" element={<SystemDynamics />} />
         <Route path="/trc-data" element={<TRCMap />} />
+        <Route path="/rainfall-explorer" element={
+          <div className="min-h-screen bg-slate-50">
+            <header className="bg-white border-b border-slate-200 shadow-sm">
+              <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                    <img src="/CKICAS_LOGO.png" alt="CKICAS Logo" className="h-10 w-auto" />
+                    <span className="font-bold text-xl text-slate-900">CKCIAS <span className="text-slate-500 font-normal">Drought Monitor</span></span>
+                  </Link>
+                </div>
+                <Link to="/" className="text-sm font-medium text-slate-600 hover:text-slate-900">← Back to Dashboard</Link>
+              </div>
+            </header>
+            <main className="max-w-7xl mx-auto px-4 py-8">
+              <RainfallExplorer />
+            </main>
+          </div>
+        } />
       </Routes>
     </Router>
   );

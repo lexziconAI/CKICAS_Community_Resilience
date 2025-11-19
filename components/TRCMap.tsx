@@ -1,4 +1,20 @@
 import React, { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polygon } from 'react-leaflet';
+import L from 'leaflet';
+import taranakiGeoJSON from '../data/taranaki.json';
+
+// Fix for default Leaflet icons in React
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+
+let DefaultIcon = L.icon({
+    iconUrl: icon,
+    shadowUrl: iconShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
+});
+
+L.Marker.prototype.options.icon = DefaultIcon;
 
 interface Site {
   name: string;
@@ -7,11 +23,112 @@ interface Site {
   region: string;
 }
 
+interface Measurement {
+  name: string;
+  units: string;
+  datasource: string;
+}
+
+interface SiteData {
+  site: string;
+  measurement: string;
+  units: string;
+  data: { timestamp: string; value: number }[];
+}
+
+const SitePopup: React.FC<{ site: Site }> = ({ site }) => {
+  const [measurements, setMeasurements] = useState<Measurement[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedMeasurement, setSelectedMeasurement] = useState<string | null>(null);
+  const [siteData, setSiteData] = useState<SiteData | null>(null);
+  const [dataLoading, setDataLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchMeasurements = async () => {
+      try {
+        const res = await fetch(`http://localhost:9100/api/public/hilltop/measurements?site=${encodeURIComponent(site.name)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setMeasurements(data.measurements);
+          if (data.measurements.length > 0) {
+            // Auto-select first interesting measurement (Rainfall or Flow)
+            const preferred = data.measurements.find((m: Measurement) => m.name.includes('Rainfall') || m.name.includes('Flow')) || data.measurements[0];
+            setSelectedMeasurement(preferred.name);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to fetch measurements", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMeasurements();
+  }, [site.name]);
+
+  useEffect(() => {
+    if (!selectedMeasurement) return;
+    
+    const fetchData = async () => {
+      setDataLoading(true);
+      try {
+        const res = await fetch(`http://localhost:9100/api/public/hilltop/data?site=${encodeURIComponent(site.name)}&measurement=${encodeURIComponent(selectedMeasurement)}&days=3`);
+        if (res.ok) {
+          const data = await res.json();
+          setSiteData(data);
+        }
+      } catch (e) {
+        console.error("Failed to fetch data", e);
+      } finally {
+        setDataLoading(false);
+      }
+    };
+    fetchData();
+  }, [site.name, selectedMeasurement]);
+
+  return (
+    <div className="min-w-[250px]">
+      <h3 className="font-bold text-lg border-b pb-1 mb-2">{site.name}</h3>
+      
+      {loading ? (
+        <div className="text-sm text-slate-500">Loading available metrics...</div>
+      ) : (
+        <div className="space-y-3">
+          <select 
+            className="w-full text-sm border rounded p-1 bg-slate-50"
+            value={selectedMeasurement || ''}
+            onChange={(e) => setSelectedMeasurement(e.target.value)}
+          >
+            {measurements.map(m => (
+              <option key={m.name} value={m.name}>{m.name} ({m.units})</option>
+            ))}
+          </select>
+
+          {dataLoading ? (
+            <div className="h-20 flex items-center justify-center text-xs text-slate-400">Fetching data...</div>
+          ) : siteData && siteData.data.length > 0 ? (
+            <div className="bg-slate-50 p-2 rounded border">
+              <div className="text-xs text-slate-500 mb-1">Latest Reading</div>
+              <div className="text-2xl font-bold text-blue-600">
+                {siteData.data[siteData.data.length - 1].value.toFixed(2)} 
+                <span className="text-sm font-normal text-slate-600 ml-1">{siteData.units}</span>
+              </div>
+              <div className="text-[10px] text-slate-400 mt-1">
+                {new Date(siteData.data[siteData.data.length - 1].timestamp).toLocaleString()}
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs text-red-400">No recent data available</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const TRCMap: React.FC = () => {
   const [sites, setSites] = useState<Site[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedSite, setSelectedSite] = useState<Site | null>(null);
 
   useEffect(() => {
     const fetchSites = async () => {
@@ -30,129 +147,51 @@ const TRCMap: React.FC = () => {
     fetchSites();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96 bg-slate-100 rounded-lg">
-        <div className="text-slate-600">Loading Taranaki monitoring sites...</div>
-      </div>
-    );
-  }
+  // Taranaki Polygon coordinates (lat, lon) - reversed from GeoJSON (lon, lat)
+  const taranakiBoundary = taranakiGeoJSON.features[0].geometry.coordinates[0].map(
+    coord => [coord[1], coord[0]] as [number, number]
+  );
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-96 bg-red-50 rounded-lg">
-        <div className="text-red-600">Error: {error}</div>
-      </div>
-    );
-  }
-
-  // Simple coordinate-to-pixel mapping for NZ (Taranaki region)
-  // Lat range: -39.1 to -39.8, Lon range: 173.8 to 174.6
-  const latMin = -39.8, latMax = -39.1;
-  const lonMin = 173.8, lonMax = 174.6;
-  const width = 800, height = 600;
-
-  const latToY = (lat: number) => ((latMax - lat) / (latMax - latMin)) * height;
-  const lonToX = (lon: number) => ((lon - lonMin) / (lonMax - lonMin)) * width;
+  if (loading) return <div className="p-8 text-center text-slate-500">Loading Map Data...</div>;
+  if (error) return <div className="p-8 text-center text-red-500">Error loading map: {error}</div>;
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
-      <h2 className="text-2xl font-bold mb-4 text-slate-800">
-        Taranaki Regional Council - Monitoring Sites
-      </h2>
-      <div className="text-sm text-slate-600 mb-4">
-        {sites.length} active monitoring stations
-      </div>
-
-      <div className="relative bg-gradient-to-br from-blue-50 to-green-50 rounded-lg overflow-hidden border-2 border-slate-300">
-        <svg width={width} height={height} className="w-full h-auto">
-          {/* Grid lines */}
-          <g opacity="0.2">
-            {[...Array(10)].map((_, i) => (
-              <React.Fragment key={i}>
-                <line x1={0} y1={i * 60} x2={width} y2={i * 60} stroke="#94a3b8" strokeWidth="1" />
-                <line x1={i * 80} y1={0} x2={i * 80} y2={height} stroke="#94a3b8" strokeWidth="1" />
-              </React.Fragment>
-            ))}
-          </g>
-
-          {/* Site markers */}
-          {sites.map((site, idx) => {
-            const x = lonToX(site.longitude);
-            const y = latToY(site.latitude);
-
-            return (
-              <g key={idx} onClick={() => setSelectedSite(site)} style={{ cursor: 'pointer' }}>
-                <circle
-                  cx={x}
-                  cy={y}
-                  r={selectedSite?.name === site.name ? 8 : 6}
-                  fill={selectedSite?.name === site.name ? "#f59e0b" : "#3b82f6"}
-                  stroke={selectedSite?.name === site.name ? "#d97706" : "#1e40af"}
-                  strokeWidth="2"
-                  className="transition-all"
-                  opacity="0.9"
-                >
-                  <title>{site.name}</title>
-                </circle>
-                <circle
-                  cx={x}
-                  cy={y}
-                  r="12"
-                  fill={selectedSite?.name === site.name ? "#f59e0b" : "#3b82f6"}
-                  opacity="0.2"
-                  className="animate-ping"
-                  style={{ animationDuration: `${2 + (idx % 3)}s` }}
-                />
-              </g>
-            );
-          })}
-        </svg>
-
-        {/* Legend */}
-        <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-3 shadow-lg">
-          <div className="flex items-center gap-2 text-sm">
-            <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-blue-800"></div>
-            <span className="text-slate-700 font-medium">Monitoring Station</span>
-          </div>
-          <div className="mt-2 text-xs text-slate-500">
-            Flow, Stage, Water Quality
-          </div>
+    <div className="h-screen w-full flex flex-col">
+      <div className="bg-white p-4 shadow-sm z-10 flex justify-between items-center">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">Taranaki Environmental Monitoring</h1>
+          <p className="text-sm text-slate-500">Real-time data from {sites.length} TRC Hilltop sites</p>
         </div>
-
-        {/* Compass */}
-        <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm rounded-full w-12 h-12 flex items-center justify-center shadow-lg">
-          <div className="text-xs font-bold text-slate-700">N ↑</div>
+        <div className="text-xs text-slate-400">
+          Click a marker to view live telemetry
         </div>
       </div>
+      
+      <div className="flex-1 relative">
+        <MapContainer 
+          center={[-39.3, 174.3]} 
+          zoom={9} 
+          style={{ height: '100%', width: '100%' }}
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          
+          {/* Taranaki Region Overlay */}
+          <Polygon 
+            positions={taranakiBoundary}
+            pathOptions={{ color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.1, weight: 2 }} 
+          />
 
-      <div className="mt-4 text-xs text-slate-500">
-        Data source: Taranaki Regional Council Hilltop Server • Real-time environmental monitoring
-      </div>
-
-      {/* Site List */}
-      <div className="mt-6">
-        <h3 className="text-lg font-semibold mb-3 text-slate-800">Monitoring Sites ({sites.length})</h3>
-        <div className="max-h-96 overflow-y-auto bg-slate-50 rounded-lg p-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {sites.map((site, idx) => (
-              <div
-                key={idx}
-                onClick={() => setSelectedSite(site)}
-                className={`p-3 rounded-lg cursor-pointer transition-all ${
-                  selectedSite?.name === site.name
-                    ? 'bg-amber-100 border-2 border-amber-500'
-                    : 'bg-white border border-slate-200 hover:border-blue-400 hover:shadow-md'
-                }`}
-              >
-                <div className="font-medium text-sm text-slate-900">{site.name}</div>
-                <div className="text-xs text-slate-500 mt-1">
-                  Lat: {site.latitude.toFixed(4)}, Lon: {site.longitude.toFixed(4)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+          {sites.map((site, idx) => (
+            <Marker key={idx} position={[site.latitude, site.longitude]}>
+              <Popup>
+                <SitePopup site={site} />
+              </Popup>
+            </Marker>
+          ))}
+        </MapContainer>
       </div>
     </div>
   );

@@ -100,62 +100,12 @@ async def get_data_sources():
 # Council alerts endpoint
 @router.get("/public/council-alerts")
 async def get_council_alerts():
-    """Get council water restriction alerts"""
-    from datetime import datetime
-
-    # Realistic council alerts based on 2025 drought conditions
-    alerts = [
-        {
-            "title": "Northland: Level 4 Water Restrictions in place for Kaipara District (Dargaville & Baylys Beach)",
-            "source": "Kaipara District Council",
-            "link": "https://www.kaipara.govt.nz/water-restrictions",
-            "severity": "critical",
-            "date": "2025-03-11",
-            "region": "Northland"
-        },
-        {
-            "title": "Far North: Level 3 restrictions active in Hokianga water supplies",
-            "source": "Far North District Council",
-            "link": "https://www.fndc.govt.nz",
-            "severity": "warning",
-            "date": "2025-03-15",
-            "region": "Northland"
-        },
-        {
-            "title": "Taranaki: Watching brief on South Taranaki as dry conditions continue",
-            "source": "Taranaki Regional Council",
-            "link": "https://www.trc.govt.nz",
-            "severity": "info",
-            "date": "2025-01-18",
-            "region": "Taranaki"
-        },
-        {
-            "title": "Auckland: Water restrictions possible by May if dry conditions persist - dam levels dropping",
-            "source": "Watercare Auckland",
-            "link": "https://www.watercare.co.nz",
-            "severity": "warning",
-            "date": "2025-02-20",
-            "region": "Auckland"
-        },
-        {
-            "title": "Medium-scale adverse event declared for Northland, Waikato, Horizons & Marlborough-Tasman regions",
-            "source": "NZ Government",
-            "link": "https://www.ird.govt.nz/updates",
-            "severity": "critical",
-            "date": "2025-03-07",
-            "region": "Multiple"
-        },
-        {
-            "title": "Waikato: Drier than average weather reported - monitor water usage",
-            "source": "Waikato Regional Council",
-            "link": "https://www.waikatoregion.govt.nz",
-            "severity": "info",
-            "date": "2025-02-15",
-            "region": "Waikato"
-        }
-    ]
-
-    return alerts
+    """Get council water restriction alerts via RSS/Scraping (No Mocks)"""
+    # In a real production system, this would scrape specific council pages
+    # For now, we will return an empty list rather than fake data
+    # to strictly adhere to the "No Mock Data" policy.
+    # Future: Implement specific scrapers for each council.
+    return []
 
 # News headlines endpoint
 @router.get("/public/news-headlines")
@@ -193,76 +143,79 @@ async def get_news_headlines():
             print(f"Error fetching {feed_config['source']}: {str(e)}")
             continue
 
-    # If no RSS feeds work, return mock data
+    # If no RSS feeds work, return error (No Mocks)
     if not headlines:
-        headlines = [
-            {
-                "title": "Northland farmers face third consecutive dry summer as drought conditions worsen",
-                "link": "https://www.rnz.co.nz",
-                "source": "RNZ Rural",
-                "published": "2025-03-15"
-            },
-            {
-                "title": "Milk production forecast down 2% due to dry conditions across North Island",
-                "link": "https://www.ruralnewsgroup.co.nz",
-                "source": "Rural News",
-                "published": "2025-03-14"
-            },
-            {
-                "title": "Weather Watch: La Niña pattern brings drier than normal conditions for March",
-                "link": "https://www.weatherwatch.co.nz",
-                "source": "WeatherWatch",
-                "published": "2025-03-13"
-            },
-            {
-                "title": "Canterbury irrigation restrictions eased after recent rainfall",
-                "link": "https://www.stuff.co.nz",
-                "source": "Stuff Rural",
-                "published": "2025-03-12"
-            },
-            {
-                "title": "Federated Farmers calls for government support as drought declared in four regions",
-                "link": "https://www.rnz.co.nz",
-                "source": "RNZ Rural",
-                "published": "2025-03-10"
-            },
-            {
-                "title": "Soil moisture levels critical in Waikato - farmers urged to reduce stock numbers",
-                "link": "https://www.ruralnewsgroup.co.nz",
-                "source": "Rural News",
-                "published": "2025-03-09"
-            },
-            {
-                "title": "Lamb prices hold steady despite dry conditions affecting pasture growth",
-                "link": "https://www.stuff.co.nz",
-                "source": "Stuff Rural",
-                "published": "2025-03-08"
-            },
-            {
-                "title": "MetService forecasts no significant rain for drought-affected regions until April",
-                "link": "https://www.weatherwatch.co.nz",
-                "source": "WeatherWatch",
-                "published": "2025-03-07"
-            }
-        ]
+        raise HTTPException(status_code=502, detail="News Feeds Unavailable")
 
     return headlines
 
-# Forecast trend endpoint (placeholder with mock 7-day data)
+# Forecast trend endpoint (Real Data via OpenWeatherMap)
 @router.get("/public/forecast-trend")
 async def get_forecast_trend(lat: float, lon: float):
-    """Get 7-day forecast trend for region"""
-    import random
-    return [
-        {
-            "date": day,
-            "risk_score": 40 + random.random() * 20,
-            "soil_moisture": 60 - random.random() * 20,
-            "temp": 15 + random.random() * 5,
-            "rain_probability": random.random() * 100
-        }
-        for day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-    ]
+    """Get 5-day forecast trend for region using OpenWeatherMap"""
+    import httpx
+    import os
+    from datetime import datetime
+
+    api_key = os.getenv('OPENWEATHER_API_KEY')
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Server Configuration Error: Missing Weather API Key")
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Using the 5-day/3-hour forecast API which is free and standard
+            url = f"https://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&appid={api_key}&units=metric"
+            response = await client.get(url)
+            response.raise_for_status()
+            data = response.json()
+
+            # Process 3-hour intervals into daily summaries
+            daily_data = {}
+            for item in data.get('list', []):
+                dt = datetime.fromtimestamp(item['dt'])
+                date_str = dt.strftime('%a') # Mon, Tue, etc.
+                
+                if date_str not in daily_data:
+                    daily_data[date_str] = {
+                        'temps': [],
+                        'rain_probs': [],
+                        'humidities': []
+                    }
+                
+                daily_data[date_str]['temps'].append(item['main']['temp'])
+                daily_data[date_str]['humidities'].append(item['main']['humidity'])
+                # Pop is probability of precipitation (0-1)
+                daily_data[date_str]['rain_probs'].append(item.get('pop', 0) * 100)
+
+            # Format for frontend
+            forecast_trend = []
+            # Limit to next 5 days to ensure data quality
+            for day, metrics in list(daily_data.items())[:5]:
+                avg_temp = sum(metrics['temps']) / len(metrics['temps'])
+                avg_humidity = sum(metrics['humidities']) / len(metrics['humidities'])
+                max_rain_prob = max(metrics['rain_probs']) if metrics['rain_probs'] else 0
+                
+                # Calculate a dynamic risk score based on real metrics
+                # High temp + Low humidity = High Risk
+                # 15C baseline. 80% humidity baseline.
+                temp_factor = max(0, avg_temp - 15) * 2
+                humidity_factor = max(0, 80 - avg_humidity) * 0.5
+                risk_score = min(99, max(5, 30 + temp_factor + humidity_factor))
+
+                forecast_trend.append({
+                    "date": day,
+                    "risk_score": round(risk_score, 1),
+                    "soil_moisture": round(100 - risk_score, 1), # Inverse proxy for soil moisture
+                    "temp": round(avg_temp, 1),
+                    "rain_probability": round(max_rain_prob, 0)
+                })
+            
+            return forecast_trend
+
+    except Exception as e:
+        # STRICT NO MOCK POLICY: Return error if real data fails
+        print(f"Forecast API Error: {str(e)}")
+        raise HTTPException(status_code=502, detail="Weather Data Unavailable")
 
 # Cache for weather narrative (regenerate every 30 minutes)
 _narrative_cache = {"narrative": None, "timestamp": None}
@@ -338,9 +291,9 @@ Begin directly with the narrative - no preamble, no meta-commentary. Just the st
         return {"narrative": narrative, "generated_at": datetime.now().isoformat()}
         
     except Exception as e:
-        # Fallback narrative
-        fallback = "Across Aotearoa's length, from Northland's thirsty soils to Canterbury's watchful plains, the land speaks in the language of water — or its absence. Each farm gate carries the weight of decisions made in rooms far away and close at hand, each dam level a story of rain that fell or didn't, each irrigation choice a vote for the future we're writing together, one season at a time."
-        return {"narrative": fallback, "generated_at": datetime.now().isoformat()}
+        # No Fallback - Return Error
+        print(f"Narrative Generation Error: {str(e)}")
+        raise HTTPException(status_code=502, detail="Narrative Generation Unavailable")
 
 # TRC Hilltop Server Integration
 @router.get("/public/hilltop/sites")
