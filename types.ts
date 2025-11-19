@@ -105,3 +105,11 @@ export interface UpdateTriggerRequest {
   combination_rule?: CombinationRule;
   is_active?: boolean;
 }
+
+export interface TriggerFormData {
+  name: string;
+  region: string;
+  conditions: TriggerCondition[];
+  combination_rule: CombinationRule;
+  is_active: boolean;
+}

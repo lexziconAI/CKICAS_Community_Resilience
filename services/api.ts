@@ -185,3 +185,17 @@ export const sendChatMessage = async (message: string): Promise<string> => {
     return "I am currently offline. Please check your internet connection or API keys.";
   }
 };
+
+export const evaluateTriggers = async (userId: number, weatherData: any): Promise<any> => {
+  try {
+    const res = await safeFetch(`${API_BASE_URL}/api/triggers/evaluate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, weather_data: weatherData })
+    });
+    return await res.json();
+  } catch (e) {
+    console.warn("Trigger evaluation failed (backend offline?)", e);
+    return null;
+  }
+};

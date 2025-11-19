@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
-import { TriggerCondition, TriggerIndicator, TriggerOperator, CombinationRule, Trigger } from '../../types';
+import { TriggerCondition, TriggerIndicator, TriggerOperator, CombinationRule, Trigger, TriggerFormData } from '../../types';
 import { NZ_REGIONS } from '../../constants';
 
 interface TriggerFormProps {
@@ -8,14 +8,6 @@ interface TriggerFormProps {
   onCancel: () => void;
   initialData?: Trigger | null;
   userId: string;
-}
-
-export interface TriggerFormData {
-  name: string;
-  region: string;
-  conditions: TriggerCondition[];
-  combination_rule: CombinationRule;
-  is_active: boolean;
 }
 
 const INDICATOR_OPTIONS: { value: TriggerIndicator; label: string; unit: string }[] = [
