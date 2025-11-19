@@ -1,0 +1,594 @@
+================================================================================
+  CKICAS DROUGHT MONITOR - PYTHON BACKEND DETAILED ANALYSIS
+================================================================================
+
+1. BACKEND FRAMEWORK & ARCHITECTURE
+================================================================================
+
+Technology Stack:
+  Framework:        FastAPI 0.100.0+
+  Server:           Uvicorn 0.23.0+
+  Language:         Python 3.11+
+  Port:             9100
+  AI Integration:   Google Gemini via google-generativeai
+
+Core Dependencies:
+  fastapi>=0.100.0              - Web framework for REST API
+  uvicorn>=0.22.0               - ASGI application server
+  python-dotenv>=1.0.0          - Environment variable handling
+  google-generativeai>=0.3.0    - Gemini AI chatbot integration
+  httpx>=0.24.0                 - HTTP client for external APIs
+  pydantic>=2.0.0               - Request/response validation
+  feedparser>=6.0.10            - RSS feed parsing (council alerts)
+  beautifulsoup4>=4.12.0        - HTML parsing (web scraping)
+
+Project Files:
+  main.py           - Server initialization and startup logic
+  routes.py         - API endpoint definitions
+  chatbot.py        - Google Gemini integration & chat logic
+  drought_risk.py   - Drought risk calculation algorithms
+  weather_service.py - OpenWeatherMap API integration
+  requirements.txt  - Python dependency specifications
+
+================================================================================
+
+2. API ENDPOINTS & SPECIFICATIONS
+================================================================================
+
+HEALTH CHECK
+  Endpoint:  GET /health
+  Purpose:   Check if backend is running
+  Response:  200 OK
+  Used by:   Frontend health monitoring (30-sec intervals)
+
+DROUGHT RISK ASSESSMENT
+  Endpoint:  GET /api/public/drought-risk
+  Params:    lat (float), lon (float), region (string)
+  Returns:   {
+               "region": "Canterbury",
+               "risk_score": 65,                     // 0-100 scale
+               "risk_level": "High",                 // Low/Medium/High/Critical
+               "factors": {
+                 "rainfall_deficit": 45.2,            // mm or percentage
+                 "soil_moisture_index": 35,           // 0-100 inverse of risk
+                 "temperature_anomaly": 2.5           // °C above baseline
+               },
+               "extended_metrics": {
+                 "wind_speed": 12.4,                  // m/s
+                 "humidity": 68,                      // %
+                 "pressure": 1013,                    // hPa
+                 "weather_main": "Partly Cloudy"      // description
+               },
+               "data_source": "OpenWeatherMap",
+               "last_updated": "2025-11-19T10:30:00Z"
+             }
+
+FORECAST TREND DATA
+  Endpoint:  GET /api/public/forecast-trend
+  Params:    lat (float), lon (float)
+  Returns:   Array of 7 daily forecasts
+             [
+               {
+                 "date": "Monday",
+                 "risk_score": 42.5,
+                 "soil_moisture": 58.3,
+                 "temp": 16.2,
+                 "rain_probability": 25.0
+               },
+               ... 6 more days
+             ]
+
+COUNCIL ALERTS / RSS FEEDS
+  Endpoint:  GET /api/public/council-alerts
+  Returns:   Array of alerts from regional councils
+             [
+               {
+                 "title": "Water Use Restrictions - Stage 2",
+                 "link": "https://council.example.com/alert",
+                 "source": "Canterbury Council",
+                 "published": "2025-11-18T09:00:00Z",
+                 "summary": "Stage 2 restrictions in effect..."
+               }
+             ]
+
+DATA SOURCES STATUS
+  Endpoint:  GET /api/public/data-sources
+  Returns:   [
+               {
+                 "name": "NIWA DataHub",
+                 "status": "active|inactive",
+                 "last_sync": "2025-11-19T10:25:00Z"
+               },
+               {
+                 "name": "OpenWeatherMap",
+                 "status": "active",
+                 "last_sync": "Live"
+               },
+               {
+                 "name": "Regional Councils",
+                 "status": "active",
+                 "last_sync": "2025-11-19T09:15:00Z"
+               }
+             ]
+
+CHAT / AI ANALYSIS
+  Endpoint:  POST /api/chat
+  Request:   { "message": "Tell me about drought in Canterbury" }
+  Response:  {
+               "response": "Canterbury is experiencing high drought risk 
+                           (65/100) due to elevated temperatures and low 
+                           humidity. Consider implementing Stage 2 water 
+                           restrictions..."
+             }
+
+================================================================================
+
+3. DROUGHT RISK CALCULATION ALGORITHM
+================================================================================
+
+MATHEMATICAL MODEL:
+
+Step 1: BASE RISK (Regional Default)
+  - Canterbury: 65   (driest)
+  - Gisborne: 62
+  - Hawke's Bay: 58
+  - Waikato: 55
+  - Otago: 55
+  - Marlborough: 48
+  - Manawatu-Wanganui: 42
+  - Taranaki: 38
+  - Tasman: 35
+  - Northland: 25
+  - West Coast: 20  (wettest)
+  (and others between 20-65)
+
+Step 2: TEMPERATURE ANOMALY
+  Baseline Temperature = 15.0°C
+  Temperature Anomaly = Current Temp - 15.0°C
+  Impact = Anomaly × 2.0 (doubled weighting)
+  
+  Example: 18°C current
+  - Anomaly = 18 - 15 = +3°C
+  - Impact = 3 × 2.0 = +6 points
+
+Step 3: HUMIDITY DEFICIT
+  Target Humidity = 80%
+  Humidity Deficit = max(0, 80 - Current Humidity)
+  Impact = Deficit × 0.5
+  
+  Example: 68% current
+  - Deficit = 80 - 68 = 12 points
+  - Impact = 12 × 0.5 = +6 points
+
+Step 4: FINAL CALCULATION
+  Risk Score = Base Risk + (Temp Anomaly × 2.0) + (Humidity Deficit × 0.5)
+  Risk Score = max(5, min(99, floor(Risk Score)))
+  
+  Example for Canterbury (Base 65) at 18°C, 68% humidity:
+  Risk Score = 65 + 6 + 6 = 77 (constrained to 5-99)
+
+Step 5: RISK LEVEL CLASSIFICATION
+  Risk Score 0-25:    Low         (Green)   - Favorable
+  Risk Score 26-50:   Medium      (Yellow)  - Moderate Concern
+  Risk Score 51-75:   High        (Orange)  - Significant Risk
+  Risk Score 76-100:  Critical    (Red)     - Severe Drought
+
+Step 6: DERIVED FACTORS
+  Soil Moisture Index = 100 - Risk Score
+  Rainfall Deficit = Humidity Deficit percentage
+  Temperature Anomaly = Reported in °C
+
+EXAMPLE CALCULATION:
+  Region: Canterbury (Base Risk: 65)
+  Current: Temperature 20°C, Humidity 65%
+  
+  Step 1: Base = 65
+  Step 2: Temp Anomaly = 20 - 15 = +5 → Impact = 5 × 2.0 = +10
+  Step 3: Humidity Deficit = 80 - 65 = 15 → Impact = 15 × 0.5 = +7.5
+  Final: 65 + 10 + 7.5 = 82.5 → 82 (CRITICAL - Red)
+  
+  Factors:
+  - Rainfall Deficit: 15mm
+  - Soil Moisture Index: 100 - 82 = 18
+  - Temperature Anomaly: +5.0°C
+
+================================================================================
+
+4. WEATHER DATA INTEGRATION
+================================================================================
+
+PRIMARY SOURCE: OpenWeatherMap API
+  Endpoint: https://api.openweathermap.org/data/2.5/weather
+  Params: lat, lon, appid, units=metric
+  Retrieval Frequency: Real-time (per request)
+  API Key: d7ab6944b5791f6c502a506a6049165f (fallback)
+  
+  Data Extracted:
+    - Current Temperature (°C)
+    - Humidity (%)
+    - Pressure (hPa)
+    - Wind Speed (m/s)
+    - Weather Condition (Clear, Rainy, Cloudy, etc.)
+    - Cloud Cover (%)
+    - Visibility (m)
+    
+  Usage:
+    - Real-time risk calculations
+    - Extended metrics display
+    - Forecast trend generation
+
+SECONDARY SOURCES (Backend Only):
+  1. NIWA DataHub (New Zealand Meteorological Service)
+     - Official drought indices
+     - Historical soil moisture data
+     - Rainfall records
+     - Regional climate normals
+     
+  2. Regional Council RSS Feeds
+     - Water use restrictions alerts
+     - Drought warnings
+     - Public advisories
+     - Irrigation restrictions
+     
+  3. Forecast Integration
+     - 7-day weather forecast
+     - Rain probability
+     - Temperature projections
+     - Wind patterns
+
+CLIENT-SIDE FALLBACK:
+  If backend offline, frontend can:
+  - Query OpenWeatherMap directly
+  - Use cached data
+  - Generate mock forecasts
+  - Status: "Serverless Mode"
+
+================================================================================
+
+5. CHATBOT & AI INTEGRATION
+================================================================================
+
+GOOGLE GEMINI INTEGRATION:
+
+Model Details:
+  Primary Model: gemini-2.5-flash
+  Secondary: gemini-1.5-pro
+  Provider: Google Generative AI (via google-generativeai library)
+  
+Authentication:
+  Environment Variable: GOOGLE_API_KEY
+  Format: AIzaSyCFe1c5oJi9D8gSm5b8InhvoIydmdDj9NE (example fallback)
+  Location: .env file in backend root
+
+System Instruction (Prompt Engineering):
+  "You are the CKICAS Drought Monitor AI Assistant for New Zealand. 
+   Provide concise, expert advice on drought risk, rainfall, and soil 
+   moisture for NZ farmers. Only base your advice on general knowledge 
+   if specific real-time data is unavailable."
+
+CHATBOT CAPABILITIES:
+
+1. Drought Analysis
+   - Regional risk assessments
+   - Trend identification
+   - Comparative analysis
+   - Risk forecasting
+
+2. Agricultural Advice
+   - Water management strategies
+   - Crop-specific guidance
+   - Irrigation recommendations
+   - Soil conservation tips
+
+3. Information Services
+   - Regional statistics
+   - Historical trends
+   - Current alert status
+   - Council restrictions
+
+4. Natural Language Support
+   - Multi-turn conversations
+   - Context awareness
+   - Regional disambiguation
+   - Follow-up questions
+
+INTEGRATION FLOW:
+  User Types Message
+       ↓
+  Frontend sends POST /api/chat
+       ↓
+  Backend receives message
+       ↓
+  Backend calls genai.models.generateContent()
+       ↓
+  Gemini processes with system instruction
+       ↓
+  AI response generated
+       ↓
+  Backend returns response text
+       ↓
+  Frontend displays in chat bubble
+
+CLIENT-SIDE FALLBACK:
+  If backend offline:
+  - Frontend uses genai directly
+  - Requires GOOGLE_API_KEY in constants.ts
+  - Model: gemini-2.5-flash or gemini-1.5
+  - Status: "Serverless Mode"
+
+RESPONSE FORMATTING:
+  - Supports markdown (**bold**, lists, etc.)
+  - Auto-scrolling to latest message
+  - Typing indicators (animated dots)
+  - Error handling with user-friendly messages
+
+================================================================================
+
+6. EXTERNAL SERVICES & API DEPENDENCIES
+================================================================================
+
+SERVICE 1: GOOGLE GEMINI AI
+  Provider: Google Cloud AI
+  Purpose: Conversational AI chatbot
+  Authentication: API Key
+  Models: gemini-2.5-flash, gemini-1.5-pro
+  Fallback: Client-side execution
+  Rate Limiting: Google's API quotas
+
+SERVICE 2: OPENWEATHERMAP API
+  Provider: OpenWeatherMap.org
+  Purpose: Real-time weather data
+  Endpoint: api.openweathermap.org/data.2.5/weather
+  Authentication: API Key
+  Polling: Per-request (on-demand)
+  Data: Temperature, humidity, wind, pressure, conditions
+  Fallback: Last known values, mock data
+
+SERVICE 3: NIWA DATAHUB
+  Provider: National Institute of Water & Atmospheric Research
+  Purpose: New Zealand meteorological data
+  Data: Drought indices, soil moisture, rainfall records
+  Format: Likely REST API or CSV exports
+  Authentication: Possibly API key or open access
+  Update Frequency: Daily/Weekly
+
+SERVICE 4: REGIONAL COUNCIL SYSTEMS
+  Provider: 16 NZ Regional Councils
+  Purpose: Water restrictions and drought alerts
+  Format: RSS feeds (parsed with feedparser library)
+  Coverage: All New Zealand regions
+  HTML Parsing: beautifulsoup4 for content extraction
+  Update Frequency: Variable (real-time to weekly)
+
+ERROR HANDLING:
+  - API unavailability falls back to client-side
+  - Missing services show "offline" status
+  - Graceful degradation with cached data
+  - User-friendly error messages
+
+================================================================================
+
+7. DATA FLOW & PROCESSING LOGIC
+================================================================================
+
+ARCHITECTURE OVERVIEW:
+
+  Frontend (React/Vite)                    Backend (FastAPI)
+  ├─ DroughtMap Component                  ├─ main.py (server init)
+  ├─ ChatInterface Component               ├─ routes.py (endpoints)
+  ├─ StatusCard Components                 ├─ weather_service.py
+  ├─ services/api.ts (API calls)           ├─ drought_risk.py
+  └─ constants.ts (config)                 ├─ chatbot.py
+                                           └─ .env (secrets)
+           ↓↓↓
+    Network Communication (JSON/HTTP)
+           ↓↓↓
+    OpenWeatherMap API
+    Google Gemini API
+    NIWA DataHub
+    Regional Council RSS
+
+TYPICAL REQUEST FLOW:
+
+1. HEALTH CHECK (30-second interval)
+   Frontend: GET /health
+   Backend: 200 OK
+   Result: System Online / Offline / Serverless
+
+2. LOAD ALL REGIONS (Parallel)
+   Frontend: Promise.all([16 requests])
+   For each region:
+     GET /api/public/drought-risk?lat=X&lon=Y&region=Name
+     ↓
+     Backend fetches OpenWeatherMap data
+     Backend calculates risk score
+     Backend returns DroughtRiskData
+   Result: Map visualization with color-coded regions
+
+3. SELECT REGION
+   Frontend: Click region on map
+   Action: GET /api/public/forecast-trend?lat=X&lon=Y
+   Backend: Generates 7-day forecast
+   Result: Historical trend chart populated
+
+4. CHAT MESSAGE
+   Frontend: POST /api/chat {"message": "..."}
+   Backend:
+     - Receive message
+     - Call Gemini API
+     - Process with system instruction
+     - Return response text
+   Frontend: Display in chat bubble
+
+5. ALERTS & STATUS
+   Frontend: GET /api/public/council-alerts
+   Backend: Parse RSS feeds, return recent alerts
+   Result: Alert banner displayed
+
+DETAILED PROCESSING EXAMPLE: DROUGHT RISK REQUEST
+
+Request:
+  GET /api/public/drought-risk?lat=-43.5&lon=171.2&region=Canterbury
+
+Backend Processing:
+  1. Parse query parameters
+     lat = -43.5 (South Island)
+     lon = 171.2 (East Coast)
+     region = "Canterbury"
+  
+  2. Get regional base risk
+     base_risk = REGIONS["Canterbury"].base_risk = 65
+  
+  3. Fetch current weather
+     weather = openweathermap.get_weather(-43.5, 171.2)
+     Results:
+       temp = 22.3°C
+       humidity = 62%
+       pressure = 1008 hPa
+       wind_speed = 15.2 m/s
+       weather_main = "Clear"
+  
+  4. Calculate anomalies
+     temp_anomaly = 22.3 - 15.0 = +7.3°C
+     humidity_deficit = max(0, 80 - 62) = 18
+  
+  5. Calculate risk score
+     risk_score = 65 + (7.3 × 2.0) + (18 × 0.5)
+     risk_score = 65 + 14.6 + 9.0 = 88.6
+     risk_score = floor(88.6) = 88
+     risk_score = min(99, max(5, 88)) = 88
+  
+  6. Determine risk level
+     if 88 > 75: risk_level = "Critical"
+  
+  7. Calculate factors
+     soil_moisture_index = 100 - 88 = 12
+     rainfall_deficit = 18 (humidity deficit)
+  
+  8. Format response
+     {
+       "region": "Canterbury",
+       "risk_score": 88,
+       "risk_level": "Critical",
+       "factors": {
+         "rainfall_deficit": 18.0,
+         "soil_moisture_index": 12,
+         "temperature_anomaly": 7.3
+       },
+       "extended_metrics": {
+         "wind_speed": 15.2,
+         "humidity": 62,
+         "pressure": 1008,
+         "weather_main": "Clear"
+       },
+       "data_source": "OpenWeatherMap (Live Client)",
+       "last_updated": "2025-11-19T14:30:45Z"
+     }
+
+Frontend Processing:
+  1. Receive response
+  2. Update map marker (Canterbury circle turns red)
+  3. Store in state
+  4. Enable chat interaction for this region
+  5. Display extended metrics
+  6. Show risk warning badge
+
+================================================================================
+
+8. CONFIGURATION & ENVIRONMENT
+================================================================================
+
+ENVIRONMENT VARIABLES (.env file in backend/):
+  GOOGLE_API_KEY=your_api_key_here
+  OPENWEATHER_API_KEY=d7ab6944b5791f6c502a506a6049165f (optional)
+  NIWA_API_KEY=<if required>
+
+SERVER CONFIGURATION:
+  Host: 0.0.0.0 (listen on all interfaces)
+  Port: 9100
+  Reload: True (development mode)
+  CORS: Enabled (for frontend communication)
+  Workers: 1 (or configurable)
+
+FRONTEND CONFIGURATION (constants.ts):
+  API_BASE_URL = 'http://localhost:9100'
+  GOOGLE_API_KEY = 'AIzaSyCFe1c5oJi9D8gSm5b8InhvoIydmdDj9NE'
+  OPENWEATHER_API_KEY = 'd7ab6944b5791f6c502a506a6049165f'
+
+NZ REGIONS CONFIGURED:
+  16 total regions with base risk scores
+  Coordinates (lat/lon) for each
+  Used for map rendering and data fetching
+
+================================================================================
+
+9. KEY ARCHITECTURAL FEATURES
+================================================================================
+
+HYBRID OPERATION MODE:
+  Online:    Full backend functionality, all services active
+  Serverless: Frontend operates independently with Gemini
+  Offline:   Cached data, graceful error messages
+
+FAULT TOLERANCE:
+  - OpenWeatherMap unavailable → Show last known value
+  - NIWA offline → Use regional estimates
+  - Councils down → Show cached alerts or none
+  - Gemini unavailable → Direct client-side fallback
+  - Status indicators keep user informed
+
+REAL-TIME CAPABILITIES:
+  - Parallel region loading (Promise.all with 16 requests)
+  - 30-second health check interval
+  - On-demand weather updates
+  - Last_updated timestamps on all data
+  - Streaming chat responses (optional)
+
+SCALABILITY:
+  - Stateless API (no sessions/state)
+  - Can be containerized (Docker)
+  - Horizontal scaling possible
+  - Caching opportunities at multiple levels
+  - No database required (stateless)
+
+SECURITY:
+  - API keys in environment variables
+  - CORS enabled for frontend only
+  - No authentication required (public endpoints)
+  - Input validation via Pydantic
+  - Rate limiting possible via reverse proxy
+
+================================================================================
+
+10. SUMMARY
+================================================================================
+
+The CKICAS Drought Monitor backend is a sophisticated FastAPI application 
+serving the New Zealand agricultural community with:
+
+✓ Real-time drought risk assessment using multi-factor algorithm
+✓ Integration with OpenWeatherMap, NIWA, and Regional Councils
+✓ AI-powered Gemini chatbot for expert analysis
+✓ 16 NZ regions with tailored risk profiles
+✓ Hybrid online/serverless operation modes
+✓ Graceful degradation and fault tolerance
+✓ RESTful API design with public endpoints
+✓ Parallel data loading for performance
+
+The system provides farmers with actionable drought intelligence through
+an intuitive web interface, combining real-time weather data, historical
+trends, council alerts, and AI-powered agricultural advice.
+
+Key Files:
+  /backend/main.py           - Server initialization
+  /backend/routes.py         - 6 main API endpoints
+  /backend/weather_service.py - OpenWeatherMap integration
+  /backend/drought_risk.py    - Risk calculation algorithm
+  /backend/chatbot.py        - Gemini AI chatbot
+  /backend/requirements.txt  - Python dependencies
+
+API Ports:
+  Frontend: http://localhost:5173 (React/Vite)
+  Backend:  http://localhost:9100 (FastAPI)
+
+================================================================================

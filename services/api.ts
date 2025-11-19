@@ -128,6 +128,23 @@ export const fetchCouncilAlerts = async (): Promise<RssFeedItem[]> => {
   }
 };
 
+export const fetchNewsHeadlines = async (): Promise<RssFeedItem[]> => {
+  try {
+    const res = await safeFetch(`${API_BASE_URL}/api/public/news-headlines`);
+    return await res.json();
+  } catch (e) {
+    return [
+      {
+        title: "System: Connect Backend for Live News Feeds",
+        link: "#",
+        source: "System",
+        published: new Date().toISOString(),
+        summary: "To see real news feeds, please ensure the Python backend is running."
+      }
+    ];
+  }
+};
+
 export const fetchDataSources = async (): Promise<DataSource[]> => {
   try {
     const res = await safeFetch(`${API_BASE_URL}/api/public/data-sources`);

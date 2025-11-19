@@ -57,3 +57,51 @@ export interface DataSource {
   status: 'active' | 'inactive';
   last_sync: string;
 }
+
+// User and Trigger Management Types
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  organization: string;
+  region: string;
+}
+
+export type TriggerIndicator = 'temp' | 'rainfall' | 'humidity' | 'wind_speed';
+export type TriggerOperator = '>' | '<' | '>=' | '<=' | '==';
+export type CombinationRule = 'any_1' | 'any_2' | 'any_3' | 'all';
+
+export interface TriggerCondition {
+  indicator: TriggerIndicator;
+  operator: TriggerOperator;
+  threshold: number;
+}
+
+export interface Trigger {
+  id: string;
+  user_id: string;
+  name: string;
+  region: string;
+  conditions: TriggerCondition[];
+  combination_rule: CombinationRule;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateTriggerRequest {
+  user_id: string;
+  name: string;
+  region: string;
+  conditions: TriggerCondition[];
+  combination_rule: CombinationRule;
+  is_active?: boolean;
+}
+
+export interface UpdateTriggerRequest {
+  name?: string;
+  region?: string;
+  conditions?: TriggerCondition[];
+  combination_rule?: CombinationRule;
+  is_active?: boolean;
+}

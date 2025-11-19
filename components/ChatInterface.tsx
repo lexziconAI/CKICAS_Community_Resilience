@@ -1,16 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage } from '../types';
-import { sendChatMessage } from '../services/api';
+import { ChatMessage, DroughtRiskData } from '../types';
+import { sendChatMessage, fetchDroughtRisk } from '../services/api';
+import { NZ_REGIONS } from '../constants';
 
 interface ChatInterfaceProps {
   selectedRegion: string | null;
+  selectedRegionData: DroughtRiskData | null;
+  trigger?: number;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedRegion }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedRegion, selectedRegionData, trigger = 0 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
-      content: 'Kia ora! I am your CKICAS drought monitoring assistant. Ask me about drought risks in any NZ region or select a region on the map.',
+      content: 'Kia ora! I am your CKCIAS drought monitoring assistant. Ask me about drought risks in any NZ region or select a region on the map.',
       timestamp: Date.now(),
     }
   ]);
@@ -27,12 +30,33 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedRegion }) => {
   }, [messages]);
 
   useEffect(() => {
-    if (selectedRegion) {
-      const prompt = `Tell me about the current drought situation in ${selectedRegion}.`;
+    if (selectedRegion && selectedRegionData && trigger > 0) {
+      // Build a data-rich prompt with actual metrics
+      const prompt = `Analyze the current drought situation for ${selectedRegion} based on this real-time data:
+
+Region: ${selectedRegionData.region}
+Risk Level: ${selectedRegionData.risk_level}
+Risk Score: ${selectedRegionData.risk_score}/10
+
+Current Metrics:
+- Temperature: ${selectedRegionData.factors.temperature || 'N/A'}°C (Anomaly: ${selectedRegionData.factors.temperature_anomaly || 'N/A'}°C)
+- Humidity: ${selectedRegionData.extended_metrics?.humidity || selectedRegionData.factors.humidity || 'N/A'}%
+- Rainfall (24h forecast): ${selectedRegionData.factors.rainfall_24h || 'N/A'}mm
+- Rainfall Deficit: ${selectedRegionData.factors.rainfall_deficit || 'N/A'}mm
+- Soil Moisture Index: ${selectedRegionData.factors.soil_moisture_index || 'N/A'}
+- Wind Speed: ${selectedRegionData.extended_metrics?.wind_speed || 'N/A'} m/s
+- Pressure: ${selectedRegionData.extended_metrics?.pressure || 'N/A'} hPa
+- Weather: ${selectedRegionData.extended_metrics?.weather_main || selectedRegionData.weather_description || 'N/A'}
+
+Data Source: ${selectedRegionData.data_source || 'OpenWeather'}
+Last Updated: ${selectedRegionData.last_updated || selectedRegionData.timestamp}
+
+Please provide a concise analysis of the drought risk, what the data indicates, and any recommendations for this region.`;
+
       handleSend(prompt);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRegion]);
+  }, [trigger]);
 
   const handleSend = async (text: string = input) => {
     if (!text.trim() || isTyping) return;
@@ -48,7 +72,80 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedRegion }) => {
     setIsTyping(true);
 
     try {
-      const responseText = await sendChatMessage(text);
+      // Detect if the user is asking about a specific region
+      const detectedRegion = NZ_REGIONS.find(region =>
+        text.toLowerCase().includes(region.name.toLowerCase())
+      );
+
+      console.log('🔍 Region detection:', {
+        userText: text,
+        detectedRegion: detectedRegion?.name || 'None',
+        selectedRegionData: selectedRegionData?.region || 'None'
+      });
+
+      let enrichedPrompt = text;
+
+      // If a region is mentioned and we don't have its data already, fetch it
+      if (detectedRegion && (!selectedRegionData || selectedRegionData.region !== detectedRegion.name)) {
+        try {
+          console.log('📡 Fetching data for:', detectedRegion.name);
+          const regionData = await fetchDroughtRisk(detectedRegion.lat, detectedRegion.lon);
+          console.log('✅ Data fetched:', regionData);
+
+          // Enrich the prompt with real-time data
+          enrichedPrompt = `${text}
+
+Here is the current real-time data for ${regionData.region}:
+
+Risk Level: ${regionData.risk_level}
+Risk Score: ${regionData.risk_score}/10
+
+Current Metrics:
+- Temperature: ${regionData.factors.temperature || 'N/A'}°C (Anomaly: ${regionData.factors.temperature_anomaly || 'N/A'}°C)
+- Humidity: ${regionData.extended_metrics?.humidity || regionData.factors.humidity || 'N/A'}%
+- Rainfall (24h forecast): ${regionData.factors.rainfall_24h || 'N/A'}mm
+- Rainfall Deficit: ${regionData.factors.rainfall_deficit || 'N/A'}mm
+- Soil Moisture Index: ${regionData.factors.soil_moisture_index || 'N/A'}
+- Wind Speed: ${regionData.extended_metrics?.wind_speed || 'N/A'} m/s
+- Pressure: ${regionData.extended_metrics?.pressure || 'N/A'} hPa
+- Weather: ${regionData.extended_metrics?.weather_main || regionData.weather_description || 'N/A'}
+
+Data Source: ${regionData.data_source || 'OpenWeather'}
+Last Updated: ${regionData.last_updated || regionData.timestamp}
+
+Please analyze this data and provide a detailed response to the user's question.`;
+        } catch (fetchError) {
+          console.error('Error fetching region data:', fetchError);
+          // Continue with original prompt if fetch fails
+        }
+      } else if (selectedRegionData && text.toLowerCase().includes(selectedRegionData.region.toLowerCase())) {
+        // Use already selected region data
+        enrichedPrompt = `${text}
+
+Here is the current real-time data for ${selectedRegionData.region}:
+
+Risk Level: ${selectedRegionData.risk_level}
+Risk Score: ${selectedRegionData.risk_score}/10
+
+Current Metrics:
+- Temperature: ${selectedRegionData.factors.temperature || 'N/A'}°C (Anomaly: ${selectedRegionData.factors.temperature_anomaly || 'N/A'}°C)
+- Humidity: ${selectedRegionData.extended_metrics?.humidity || selectedRegionData.factors.humidity || 'N/A'}%
+- Rainfall (24h forecast): ${selectedRegionData.factors.rainfall_24h || 'N/A'}mm
+- Rainfall Deficit: ${selectedRegionData.factors.rainfall_deficit || 'N/A'}mm
+- Soil Moisture Index: ${selectedRegionData.factors.soil_moisture_index || 'N/A'}
+- Wind Speed: ${selectedRegionData.extended_metrics?.wind_speed || 'N/A'} m/s
+- Pressure: ${selectedRegionData.extended_metrics?.pressure || 'N/A'} hPa
+- Weather: ${selectedRegionData.extended_metrics?.weather_main || selectedRegionData.weather_description || 'N/A'}
+
+Data Source: ${selectedRegionData.data_source || 'OpenWeather'}
+Last Updated: ${selectedRegionData.last_updated || selectedRegionData.timestamp}
+
+Please analyze this data and provide a detailed response to the user's question.`;
+      }
+
+      console.log('📤 Sending prompt to backend:', enrichedPrompt.substring(0, 200) + '...');
+      const responseText = await sendChatMessage(enrichedPrompt);
+      console.log('📥 Received response:', responseText.substring(0, 200) + '...');
       const botMsg: ChatMessage = {
         role: 'assistant',
         content: responseText,
@@ -58,7 +155,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedRegion }) => {
     } catch (error) {
       const errorMsg: ChatMessage = {
         role: 'assistant',
-        content: "Sorry, I'm having trouble connecting to the drought analysis engine. Please ensure the backend is running on port 8001.",
+        content: "Sorry, I'm having trouble connecting to the drought analysis engine. Please ensure the backend is running on port 9100.",
         timestamp: Date.now(),
       };
       setMessages(prev => [...prev, errorMsg]);
@@ -107,7 +204,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedRegion }) => {
       <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
         <div>
           <h2 className="font-bold text-lg">Drought Assistant</h2>
-          <p className="text-xs text-slate-400">Powered by Google Gemini 1.5</p>
+          <p className="text-xs text-slate-400">Powered by Claude Haiku 4.5</p>
         </div>
         <div className={`w-2 h-2 rounded-full ${isTyping ? 'bg-green-400 animate-pulse' : 'bg-slate-500'}`}></div>
       </div>

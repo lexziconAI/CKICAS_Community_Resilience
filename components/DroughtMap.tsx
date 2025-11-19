@@ -8,6 +8,7 @@ import { DroughtRiskData } from '../types';
 
 interface DroughtMapProps {
   onRegionSelect: (data: DroughtRiskData) => void;
+  onAnalyzeInChat: (data: DroughtRiskData) => void;
 }
 
 const MapController = () => {
@@ -21,7 +22,7 @@ const MapController = () => {
   return null;
 };
 
-const DroughtMap: React.FC<DroughtMapProps> = ({ onRegionSelect }) => {
+const DroughtMap: React.FC<DroughtMapProps> = ({ onRegionSelect, onAnalyzeInChat }) => {
   const [regionData, setRegionData] = useState<Record<string, DroughtRiskData>>({});
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -118,11 +119,14 @@ const DroughtMap: React.FC<DroughtMapProps> = ({ onRegionSelect }) => {
                         <span className="font-mono font-bold text-lg" style={{color}}>{riskData.risk_score}</span>
                       </div>
                       <div className="text-xs text-slate-500 border-t pt-2 mt-1">
-                        <div>Rainfall Deficit: {riskData.factors.rainfall_deficit}%</div>
+                        <div>Rainfall Deficit: {riskData.factors.rainfall_deficit} mm</div>
                         <div>Soil Moisture: {riskData.factors.soil_moisture_index}</div>
                       </div>
-                      <button 
-                        onClick={() => onRegionSelect(riskData)}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAnalyzeInChat(riskData);
+                        }}
                         className="w-full mt-2 text-xs bg-slate-100 hover:bg-slate-200 py-1 rounded text-slate-700 transition-colors"
                       >
                         Analyze in Chat

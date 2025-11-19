@@ -2,7 +2,7 @@
 
 ## System Architecture
 - **Frontend**: React + Vite + Leaflet (Port 5173)
-- **Backend**: FastAPI + Python 3.11 + Google Gemini (Port 8001)
+- **Backend**: FastAPI + Python 3.11 + Google Gemini (Port 9100)
 
 ## Setup Instructions
 
@@ -25,7 +25,7 @@ Run the server:
 ```bash
 python main.py
 ```
-Server will start at http://localhost:8001.
+Server will start at http://localhost:9100.
 
 ### 2. Frontend Setup
 In the project root:
